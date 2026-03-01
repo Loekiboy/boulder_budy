@@ -18,6 +18,32 @@
         .pupil{width:18px;height:18px;background:#000;border-radius:50%;position:absolute;left:0;top:0;pointer-events:none}
         .mouth{width:100px;height:auto;cursor:grab;touch-action:none;user-select:none}
         .mouth.dragging{cursor:grabbing;z-index:100;position:absolute}
+        #action-wrapper{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2000;display:flex;align-items:center;gap:12px}
+        #next-btn{display:none;padding:12px 24px;font-size:1.2rem;background-color:#4CAF50;color:white;border:none;border-radius:8px;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,0.2)}
+        #next-btn:hover{background-color:#45a049}
+        #action-btns{display:none;gap:12px}
+        .action-button{padding:12px 20px;font-size:1rem;background:#1976D2;color:#fff;border:none;border-radius:8px;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.12)}
+        .action-button:hover{background:#1565C0}
+        .hand-pet {
+            position: absolute;
+            top: 25%;
+            left: 40%;
+            transform: translate(-50%, -50%);
+            width: 300px; 
+            z-index: 1000;
+            pointer-events: none;
+            display: none;
+        }
+        .eating-particles {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px; 
+            z-index: 1000;
+            pointer-events: none;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -26,6 +52,8 @@
         <div class="scene">
             <div class="rock-wrap">
                 <img src="images/rock.png" alt="Steen" class="rock" />
+                <img src="images/hand.gif" id="pet-hand" class="hand-pet" />
+                <img src="images/eating.gif" id="eating-particles" class="eating-particles" />
             </div>
 
             <div class="controls" aria-hidden="true">
@@ -34,7 +62,14 @@
                     <div class="eye"><div class="pupil"></div></div>
                 </div>
 
-                <img src="images/mouth.png" alt="Mond" class="mouth" />
+                <img src="images/mouth.png" alt="Mond" class="mouth" id="main-mouth" />
+            </div>
+            <div id="action-wrapper">
+                <button id="next-btn">Next</button>
+                <div id="action-btns">
+                    <button id="feed-btn" class="action-button">Feed</button>
+                    <button id="pet-btn" class="action-button">Pet</button>
+                </div>
             </div>
         </div>
     </div>
@@ -42,6 +77,8 @@
     <script>
         const pupils = Array.from(document.querySelectorAll('.pupil'));
         const draggables = document.querySelectorAll('.eye, .mouth');
+        const targetZone = document.querySelector('.rock-wrap');
+        const nextBtn = document.getElementById('next-btn');
 
         let draggedItem = null;
         let offsetX = 0;
@@ -64,6 +101,72 @@
                 p.style.top = y + 'px';
             });
         }
+
+        nextBtn.addEventListener('click', () => {
+            nextBtn.style.display = 'none';
+            document.getElementById('action-btns').style.display = 'flex';
+        });
+
+        const feedBtn = document.getElementById('feed-btn');
+        const petBtn = document.getElementById('pet-btn');
+
+        const mainMouth = document.getElementById('main-mouth');
+        const eatingParticles = document.getElementById('eating-particles');
+        const eatingSound = new Audio('sounds/eating.mp3');
+        eatingSound.preload = 'auto';
+
+        function updateEatingParticlesPosition(){
+            const mouthRect = mainMouth.getBoundingClientRect();
+            const rockRect = targetZone.getBoundingClientRect();
+            const mouthCenterX = mouthRect.left + mouthRect.width / 2;
+            const mouthCenterY = mouthRect.top + mouthRect.height / 2;
+            const left = mouthCenterX - rockRect.left;
+            const top = mouthCenterY - rockRect.top;
+            eatingParticles.style.left = left + 'px';
+            eatingParticles.style.top = top + 'px';
+        }
+
+        feedBtn.addEventListener('click', () => {
+            eatingParticles.style.display = 'block';
+            updateEatingParticlesPosition();
+
+            let rafId = null;
+            function loop(){
+                updateEatingParticlesPosition();
+                rafId = requestAnimationFrame(loop);
+            }
+            rafId = requestAnimationFrame(loop);
+
+            let isClosed = false;
+            // start sound (restart if already playing)
+            try { eatingSound.pause(); eatingSound.currentTime = 0; } catch(e){}
+            eatingSound.play().catch(()=>{});
+
+            const chewInterval = setInterval(() => {
+                isClosed = !isClosed;
+                mainMouth.src = isClosed ? 'images/mouth_closed.png' : 'images/mouth.png';
+            }, 150);
+
+            setTimeout(() => {
+                clearInterval(chewInterval);
+                if (rafId) cancelAnimationFrame(rafId);
+                try { eatingSound.pause(); eatingSound.currentTime = 0; } catch(e){}
+                mainMouth.src = 'images/mouth.png';
+                eatingParticles.style.display = 'none';
+            }, 2000);
+        });
+
+        const petHand = document.getElementById('pet-hand');
+
+        petBtn.addEventListener('click', () => {
+
+            petHand.style.display = 'block';
+
+
+            setTimeout(() => {
+                petHand.style.display = 'none';
+            }, 2000);
+        });
 
         window.addEventListener('load', () => {
             const ev = { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 };
@@ -104,9 +207,33 @@
             if (draggedItem) {
                 draggedItem.classList.remove('dragging');
                 try { draggedItem.releasePointerCapture(e.pointerId); } catch {}
+                checkCompletion();
                 draggedItem = null;
             }
         });
+
+        function checkCompletion() {
+            const zone = targetZone.getBoundingClientRect();
+            let countInZone = 0;
+
+            draggables.forEach(item => {
+                const rect = item.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+
+                if (centerX > zone.left && centerX < zone.right &&
+                    centerY > zone.top && centerY < zone.bottom) {
+                    countInZone++;
+                }
+            });
+
+            if (countInZone === 3) {
+                nextBtn.style.display = 'inline-block';
+            } else {
+                nextBtn.style.display = 'none';
+            }
+        }
+
     </script>
 </body>
 </html>
