@@ -3,12 +3,12 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Build your boulder buddy</title>
+    <title>Boulder Buddy</title>
     <link rel="icon" href="images/fav.png" type="image/png">
     <style>
         body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#f7f7f7}
         .container{text-align:center;padding:24px}
-        h1{margin:0 0 1rem;font-size:2rem;color:#222}
+        h1 {position: fixed;top: 20px;left: 50%;transform: translateX(-50%);margin: 0;font-size: 2rem;color: #222;z-index: 3000;width: 100%;text-align: center;}
         .scene{display:flex;align-items:flex-start;gap:20px}
         .rock-wrap{position:relative;width:480px;height:300px}
         .rock{width:100%;height:100%;display:block;object-fit:contain;user-select:none;pointer-events:none}
@@ -35,7 +35,7 @@
             pointer-events: none;
             display: none;
         }
-        .hunger{position:absolute;top:-48px;left:50%;transform:translateX(-50%);width:220px;text-align:left;display:none;z-index:1100}
+        .hunger{position: fixed;top: 85px;left: 50%;transform: translateX(-50%);width: 220px;text-align: left;display: none;z-index: 3000;}
         .container.hunger-active{padding-top:28px}
         .container.hunger-active h1{margin-bottom:2.5rem}
         .hunger-label{font-size:0.85rem;color:#333;margin-bottom:6px;text-align:center}
@@ -52,22 +52,53 @@
             pointer-events: none;
             display: none;
         }
+        .bubble {
+            position: absolute;
+            top: -50px;
+            left: 50%;
+            transform: translateX(-50%) scale(0);
+            background: white;
+            border: 2px solid #333;
+            padding: 8px 15px;
+            border-radius: 15px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            z-index: 1500;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+        }
+        .bubble.show { transform: translateX(-50%) scale(1); }
+        .bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 10px 10px 0;
+            border-style: solid;
+            border-color: white transparent transparent;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Build your boulder buddy</h1>
+        
+        <div id="hunger" class="hunger" aria-hidden="true">
+            <div class="hunger-label">Hunger</div>
+            <div class="hunger-track"><div id="hunger-fill" class="hunger-fill"></div></div>
+            <div id="hunger-percent" class="hunger-percent">100%</div>
+        </div>
+
         <div class="scene">
             <div class="rock-wrap">
+                <div id="speech-bubble" class="bubble"></div>
+
                 <img src="images/rock.png" alt="Steen" class="rock" />
                 <img src="images/hand.gif" id="pet-hand" class="hand-pet" />
                 <img src="images/eating.gif" id="eating-particles" class="eating-particles" />
 
-                <div id="hunger" class="hunger" aria-hidden="true">
-                    <div class="hunger-label">Hunger</div>
-                    <div class="hunger-track"><div id="hunger-fill" class="hunger-fill"></div></div>
-                    <div id="hunger-percent" class="hunger-percent">100%</div>
-                </div>
             </div>
 
             <div class="controls" aria-hidden="true">
@@ -106,6 +137,7 @@
         let offsetX = 0;
         let offsetY = 0;
         let hungerIntervalId = null;
+        let carePromptIntervalId = null;
         let rafId = null;
         const hungerContainer = document.getElementById('hunger');
 
@@ -162,6 +194,34 @@
             }, 1000);
         }
 
+        const bubble = document.getElementById('speech-bubble');
+        let bubbleTimeout;
+        const bubbleTexts = {
+            hungry: ["Hungry!", "Can I have some food?", "My stomach is growling!", "Time for a snack?"],
+            pet: ["That tickles!", "Delightful!", "Again?"],
+            idle: ["Have a nice day!", "I am a happy boulder!", "Zzz...", "What are we going to do?"],
+            feed: ["Yum!", "Delicious!", "More please!"]
+        };
+
+        function showSpeech(type) {
+            const list = bubbleTexts[type];
+            bubble.textContent = list[Math.floor(Math.random() * list.length)];
+            bubble.classList.add('show');
+            clearTimeout(bubbleTimeout);
+            bubbleTimeout = setTimeout(() => bubble.classList.remove('show'), 3000);
+        }
+
+        function startCarePrompts(){
+            if (carePromptIntervalId) return;
+            carePromptIntervalId = setInterval(() => {
+                if (hunger <= 45) {
+                    showSpeech('hungry');
+                } else if (Math.random() < 0.2) {
+                    showSpeech('idle');
+                }
+            }, 4000);
+        }
+
         function updateEatingParticlesPosition(){
             const mouthRect = mainMouth.getBoundingClientRect();
             const rockRect = targetZone.getBoundingClientRect();
@@ -194,9 +254,11 @@
                 hungerContainer.setAttribute('aria-hidden', 'false');
             }
             startHungerLoop();
+            startCarePrompts();
         });
 
-        feedBtn.addEventListener('click', () => {
+        function doFeed(){
+            showSpeech('feed');
             eatingParticles.style.display = 'block';
             changeHunger(15);
 
@@ -223,14 +285,18 @@
                 mainMouth.src = 'images/mouth.png';
                 eatingParticles.style.display = 'none';
             }, 2000);
-        });
+        }
 
-        petBtn.addEventListener('click', () => {
+        function doPet(){
+            showSpeech('pet');
             petHand.style.display = 'block';
             setTimeout(() => {
                 petHand.style.display = 'none';
             }, 2000);
-        });
+        }
+
+        feedBtn.addEventListener('click', doFeed);
+        petBtn.addEventListener('click', doPet);
 
         draggables.forEach(item => {
             item.addEventListener('pointerdown', e => {
