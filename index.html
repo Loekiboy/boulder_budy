@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Build your boulder buddy</title>
+    <link rel="icon" href="images/fav.png" type="image/png">
     <style>
         body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#f7f7f7}
         .container{text-align:center;padding:24px}
@@ -34,6 +35,13 @@
             pointer-events: none;
             display: none;
         }
+        .hunger{position:absolute;top:-48px;left:50%;transform:translateX(-50%);width:220px;text-align:left;display:none;z-index:1100}
+        .container.hunger-active{padding-top:28px}
+        .container.hunger-active h1{margin-bottom:2.5rem}
+        .hunger-label{font-size:0.85rem;color:#333;margin-bottom:6px;text-align:center}
+        .hunger-track{background:#e6e6e6;border-radius:10px;height:14px;overflow:hidden}
+        .hunger-fill{height:100%;width:100%;background:linear-gradient(90deg,#4CAF50,#8BC34A);transition:width 300ms linear}
+        .hunger-percent{font-size:0.85rem;color:#444;margin-top:6px;text-align:center}
         .eating-particles {
             position: absolute;
             top: 50%;
@@ -54,6 +62,12 @@
                 <img src="images/rock.png" alt="Steen" class="rock" />
                 <img src="images/hand.gif" id="pet-hand" class="hand-pet" />
                 <img src="images/eating.gif" id="eating-particles" class="eating-particles" />
+
+                <div id="hunger" class="hunger" aria-hidden="true">
+                    <div class="hunger-label">Hunger</div>
+                    <div class="hunger-track"><div id="hunger-fill" class="hunger-fill"></div></div>
+                    <div id="hunger-percent" class="hunger-percent">100%</div>
+                </div>
             </div>
 
             <div class="controls" aria-hidden="true">
@@ -61,9 +75,9 @@
                     <div class="eye"><div class="pupil"></div></div>
                     <div class="eye"><div class="pupil"></div></div>
                 </div>
-
                 <img src="images/mouth.png" alt="Mond" class="mouth" id="main-mouth" />
             </div>
+            
             <div id="action-wrapper">
                 <button id="next-btn">Next</button>
                 <div id="action-btns">
@@ -79,10 +93,26 @@
         const draggables = document.querySelectorAll('.eye, .mouth');
         const targetZone = document.querySelector('.rock-wrap');
         const nextBtn = document.getElementById('next-btn');
+        const feedBtn = document.getElementById('feed-btn');
+        const petBtn = document.getElementById('pet-btn');
+        const mainMouth = document.getElementById('main-mouth');
+        const eatingParticles = document.getElementById('eating-particles');
+        const petHand = document.getElementById('pet-hand');
+        
+        const eatingSound = new Audio('sounds/eating.mp3');
+        eatingSound.preload = 'auto';
 
         let draggedItem = null;
         let offsetX = 0;
         let offsetY = 0;
+        let hungerIntervalId = null;
+        let rafId = null;
+        const hungerContainer = document.getElementById('hunger');
+
+        const MAX_HUNGER = 100;
+        let hunger = Number(localStorage.getItem('bb_hunger')) || MAX_HUNGER;
+        const hungerFill = document.getElementById('hunger-fill');
+        const hungerPercent = document.getElementById('hunger-percent');
 
         function updatePupils(clientX, clientY){
             pupils.forEach(p => {
@@ -102,18 +132,35 @@
             });
         }
 
-        nextBtn.addEventListener('click', () => {
-            nextBtn.style.display = 'none';
-            document.getElementById('action-btns').style.display = 'flex';
-        });
+        function updateHungerUI(){
+            hungerFill.style.width = Math.max(0, Math.min(100, hunger)) + '%';
+            hungerPercent.textContent = Math.round(hunger) + '%';
+            if (hunger > 60) {
+                hungerFill.style.background = 'linear-gradient(90deg,#4CAF50,#8BC34A)';
+            } else if (hunger > 30) {
+                hungerFill.style.background = 'linear-gradient(90deg,#FFB300,#FFC107)';
+            } else {
+                hungerFill.style.background = 'linear-gradient(90deg,#F44336,#E53935)';
+            }
+        }
 
-        const feedBtn = document.getElementById('feed-btn');
-        const petBtn = document.getElementById('pet-btn');
+        function setHunger(v){
+            hunger = Math.max(0, Math.min(MAX_HUNGER, v));
+            try { localStorage.setItem('bb_hunger', String(hunger)); } catch(e){}
+            updateHungerUI();
+        }
 
-        const mainMouth = document.getElementById('main-mouth');
-        const eatingParticles = document.getElementById('eating-particles');
-        const eatingSound = new Audio('sounds/eating.mp3');
-        eatingSound.preload = 'auto';
+        function changeHunger(delta){
+            setHunger(hunger + delta);
+        }
+
+        function startHungerLoop(){
+            if (hungerIntervalId) return;
+            const HUNGER_PER_SEC = 10 / 60;
+            hungerIntervalId = setInterval(() => {
+                changeHunger(-HUNGER_PER_SEC);
+            }, 1000);
+        }
 
         function updateEatingParticlesPosition(){
             const mouthRect = mainMouth.getBoundingClientRect();
@@ -126,19 +173,41 @@
             eatingParticles.style.top = top + 'px';
         }
 
+        updateHungerUI();
+
+        window.addEventListener('load', () => {
+            const ev = { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 };
+            updatePupils(ev.clientX, ev.clientY);
+        });
+
+        nextBtn.addEventListener('click', () => {
+            nextBtn.style.display = 'none';
+            document.getElementById('action-btns').style.display = 'flex';
+            
+            const containerEl = document.querySelector('.container');
+            const header = containerEl ? containerEl.querySelector('h1') : null;
+            if (header) header.textContent = 'Take care of your boulder buddy';
+            if (containerEl) containerEl.classList.add('hunger-active');
+
+            if (hungerContainer) {
+                hungerContainer.style.display = 'block';
+                hungerContainer.setAttribute('aria-hidden', 'false');
+            }
+            startHungerLoop();
+        });
+
         feedBtn.addEventListener('click', () => {
             eatingParticles.style.display = 'block';
-            updateEatingParticlesPosition();
+            changeHunger(15);
 
-            let rafId = null;
-            function loop(){
+            function loop() {
                 updateEatingParticlesPosition();
                 rafId = requestAnimationFrame(loop);
             }
             rafId = requestAnimationFrame(loop);
 
             let isClosed = false;
-            // start sound (restart if already playing)
+            
             try { eatingSound.pause(); eatingSound.currentTime = 0; } catch(e){}
             eatingSound.play().catch(()=>{});
 
@@ -156,21 +225,11 @@
             }, 2000);
         });
 
-        const petHand = document.getElementById('pet-hand');
-
         petBtn.addEventListener('click', () => {
-
             petHand.style.display = 'block';
-
-
             setTimeout(() => {
                 petHand.style.display = 'none';
             }, 2000);
-        });
-
-        window.addEventListener('load', () => {
-            const ev = { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 };
-            updatePupils(ev.clientX, ev.clientY);
         });
 
         draggables.forEach(item => {
@@ -233,7 +292,6 @@
                 nextBtn.style.display = 'none';
             }
         }
-
     </script>
 </body>
 </html>
